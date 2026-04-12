@@ -7,7 +7,7 @@
     "dist"
   ],
   "bin": {
-    "oracolo": "./dist/index.js"
+    "oracolo": "dist/index.js"
   },
   "type": "module",
   "scripts": {
