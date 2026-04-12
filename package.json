@@ -1,0 +1,43 @@
+{
+  "name": "mcp-oracolo",
+  "version": "1.0.0",
+  "description": "MCP (Model Context Protocol) server designed to solve LLM code hallucinations by performing local static analysis.",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "oracolo": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc && node scripts/copy.js",
+    "start": "node dist/index.js",
+    "dev": "ts-node --esm src/index.ts",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.1.1",
+    "fast-levenshtein": "^3.0.0",
+    "html-validate": "^10.12.1",
+    "ts-morph": "^25.0.1",
+    "typescript": "^5.7.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/fast-levenshtein": "^0.0.4",
+    "@types/node": "^22.10.6",
+    "@vitest/coverage-v8": "^4.1.4",
+    "ts-node": "^10.9.2",
+    "vitest": "^4.1.4"
+  },
+  "keywords": [
+    "mcp",
+    "static-analysis",
+    "llm",
+    "hallucinations",
+    "ts-morph"
+  ],
+  "author": "",
+  "license": "ISC"
+}
