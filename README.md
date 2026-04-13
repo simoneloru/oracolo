@@ -8,7 +8,7 @@ When an LLM suggests a method that doesn't exist, a class that isn't imported, o
 
 Oracolo runs locally alongside your LLM client. When the LLM proposes code changes, it validates:
 
-- **TypeScript**: Uses `ts-morph` to verify methods, properties, and imports exist in your codebase
+- **TypeScript / JavaScript**: Uses `ts-morph` to verify methods, properties, and imports exist in your codebase
 - **PHP**: Runs ReflectionClass calls against your actual PHP files to confirm methods and class existence
 - **HTML/CSS**: Uses `html-validate` for HTML validation and scans your project's CSS files for class names
 
