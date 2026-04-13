@@ -1,33 +1,29 @@
-# Oracolo MCP Server 🔮
+# Oracolo
 
-Oracolo is an advanced [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that practically eliminates **Developer AI Hallucinations**. 
+An MCP server that validates code suggestions from LLMs against your actual codebase.
 
-It implements a revolutionary **Introspective Grounding Engine** that validates the code the LLM writes *before* it presents it to you. If the LLM invents a method, hallucinates a class, or mistypes an HTML tag, Oracolo stops it in the background, uses Fuzzy-Matching and Native Analysis to find the real method in your local workspace, and forces the LLM to auto-correct itself invisibly.
+When an LLM suggests a method that doesn't exist, a class that isn't imported, or a CSS class that doesn't match your project, Oracolo catches it before you waste time debugging.
 
-## Supported Architectures 🛠️
+## How it works
 
-Oracolo is fully modular and supports:
-- **TypeScript / Node.js**: Deep import and exact property validation via `ts-morph` AST.
-- **PHP**: Implements a zero-overhead *LLM-Powered Type Inference Engine*. Reads PHPDoc and executes local `ReflectionClass` to deeply validate Classes, Static calls, and Instance methods natively.
-- **HTML & CSS**: Validates HTML layouts natively (`html-validate`) while dynamically scanning your local project's `.css` files to instantly reject hallucinated Bootstrap/Tailwind class names!
+Oracolo runs locally alongside your LLM client. When the LLM proposes code changes, it validates:
+
+- **TypeScript**: Uses `ts-morph` to verify methods, properties, and imports exist in your codebase
+- **PHP**: Runs ReflectionClass calls against your actual PHP files to confirm methods and class existence
+- **HTML/CSS**: Uses `html-validate` for HTML validation and scans your project's CSS files for class names
+
+If it finds a mismatch, it tells the LLM to correct itself. No stack traces to paste back, no manual debugging cycles.
 
 ## Installation
 
-You can install Oracolo globally on your system to use it easily across any project or IDE.
-
 ```bash
-# Install globally via npm
 npm install -g oracolo
 ```
 
-*Alternatively, you can run it perfectly via `npx` without installing it permanently!*
-
 ## Configuration
 
-Setting up Oracolo is incredibly easy. Depending on your favorite LLM client, add the following configuration block. You can toggle active languages by changing the `--languages` argument.
+Add to your MCP client config (example for Claude Desktop):
 
-### 🤖 Claude Desktop
-Add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
@@ -39,57 +35,22 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-### 🦝 RooCode (VSCode / Roo-Cline)
-Add to your `.vscode/roo_cline.json` or standard MCP settings:
-```json
-{
-  "mcpServers": {
-    "oracolo": {
-      "command": "oracolo",
-      "args": ["--languages=typescript,php,html"]
-    }
-  }
-}
-```
+Use `--languages` to enable only the analyzers you need (e.g. `--languages=typescript`).
 
-### 🖱️ Cursor IDE
-In Cursor, go to `Settings > MCP > Add New Server`:
-- **Name**: `oracolo`
-- **Type**: `command`
-- **Command**: `npx -y oracolo --languages=typescript,php,html`
+## Why this exists
 
-### 🐘 PhpStorm / WebStorm (JetBrains IDEs)
-Using the JetBrains AI Assistant integration for MCP (ensure the plugin is updated):
-Go to `Settings > Tools > AI Assistant > MCP Servers > +`:
-- **Type**: `Command`
-- **Name**: `oracolo`
-- **Command**: `npx`
-- **Arguments**: `-y oracolo --languages=typescript,php,html`
+LLMs hallucinate code. Not because they're malicious, but because they don't know what's actually in your project until you show them. Oracolo closes that gap by running static analysis on the LLM's suggestions before they become your problem.
 
-### 🏄 Windsurf
-Add to your `mcp_config.json` inside your Windsurf workspace:
-```json
-{
-  "mcpServers": {
-    "oracolo": {
-      "command": "npx",
-      "args": ["-y", "oracolo", "--languages=typescript,php,html"]
-    }
-  }
-}
-```
+## Supported languages
 
-> **Note**: You can disable unused analyzers depending on your stack by modifying the `--languages` argument (e.g. `--languages=typescript,html`).
+- TypeScript / JavaScript (via ts-morph AST)
+- PHP (via ReflectionClass and PHPDoc analysis)
+- HTML / CSS (via html-validate + local CSS scanning)
 
-## Efficiency & Token Savings 💰
-
-The core principle of Oracolo is reducing token consumption and developer frustration. Usually, testing faulty code and pasting the stack trace back to the LLM consumes over 1000 tokens per loop. 
-Oracolo operates exclusively in the context layer. For PHP, it utilizes a "Hidden Chain of Thought" where the LLM writes descriptive PHPDocs to validate the logic, but automatically strips them before presenting the final result to you—giving you the analytical power of PHPStan with zero added project setup!
-
-## Development & Testing
-
-Oracolo runs a 100% test-coverage suite powered by Vitest to ensure analyzer behaviors.
+## Development
 
 ```bash
-npm run test
+npm install
+npm run build
+npm test
 ```
