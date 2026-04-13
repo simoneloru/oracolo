@@ -40,6 +40,10 @@
   ],
   "author": "",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simoneloru/oracolo.git"
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true
