@@ -17,7 +17,7 @@ If it finds a mismatch, it tells the LLM to correct itself. No stack traces to p
 ## Installation
 
 ```bash
-npm install -g oracolo
+npm install -g mcp-oracolo
 ```
 
 ## Configuration
@@ -29,7 +29,7 @@ Add to your MCP client config (example for Claude Desktop):
   "mcpServers": {
     "oracolo": {
       "command": "npx",
-      "args": ["-y", "oracolo", "--languages=typescript,php,html"]
+      "args": ["-y", "mcp-oracolo", "--languages=typescript,php,html"]
     }
   }
 }
