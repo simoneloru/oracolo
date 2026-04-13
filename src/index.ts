@@ -6,20 +6,24 @@ import { AnalyzerManager } from "./core/AnalyzerManager.js";
 import { TypeScriptAnalyzer } from "./analyzers/TypeScriptAnalyzer.js";
 import { PHPAnalyzer } from "./analyzers/PHPAnalyzer.js";
 import { HTMLAnalyzer } from "./analyzers/HTMLAnalyzer.js";
+import { sanitizeProjectPath, SecurityError } from "./core/Security.js";
+import { z } from "zod";
 
-// Parse CLI arguments for enabled languages
-// e.g. --languages=typescript,php,html
-let enabledLanguages = ["typescript", "javascript", "ts", "js", "tsx", "jsx"]; // default
+const verifyCodeSchema = z.object({
+    language: z.string().min(1).max(50),
+    code: z.string().min(1).max(500000),
+    projectPath: z.string().max(4096).optional(),
+});
+
+let enabledLanguages = ["typescript", "javascript", "ts", "js", "tsx", "jsx"];
 const langArg = process.argv.find(arg => arg.startsWith("--languages="));
 if (langArg) {
     enabledLanguages = langArg.split("=")[1].split(",").map(l => l.trim().toLowerCase());
-    // Give some aliases
     if (enabledLanguages.includes("typescript")) enabledLanguages.push("typescript", "javascript", "ts", "js", "tsx", "jsx");
 }
 
 const manager = new AnalyzerManager();
 
-// Register only requested analyzers or all if configured so
 if (enabledLanguages.some(l => ["typescript", "javascript", "ts", "js"].includes(l))) {
     manager.register(new TypeScriptAnalyzer());
 }
@@ -31,13 +35,11 @@ if (enabledLanguages.includes("html")) {
 }
 
 
-// Initialize server
 const server = new Server(
-    { name: "oracolo", version: "2.0.0" },
+    { name: "oracolo", version: "1.0.1" },
     { capabilities: { tools: {} } }
 );
 
-// Tool definition
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
@@ -49,15 +51,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     properties: {
                         language: {
                             type: "string",
-                            description: "The programming language of the snippet (e.g. 'typescript', 'php', 'html')."
+                            description: "The programming language of the snippet (e.g. 'typescript', 'php', 'html').",
+                            minLength: 1,
+                            maxLength: 50
                         },
                         code: {
                             type: "string",
-                            description: "The code snippet to verify."
+                            description: "The code snippet to verify.",
+                            minLength: 1,
+                            maxLength: 500000
                         },
                         projectPath: {
                             type: "string",
-                            description: "Optional. The absolute path to the local project's root directory."
+                            description: "Optional. The absolute path to the local project's root directory.",
+                            maxLength: 4096
                         }
                     },
                     required: ["language", "code"]
@@ -67,21 +74,62 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     };
 });
 
-// Tool invocation
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (request.params.name !== "verify_code") {
         throw new Error("Unknown tool");
     }
 
-    const { language, code, projectPath } = request.params.arguments as any;
-    const reportText = await manager.verify(language, code, projectPath);
+    const parsed = verifyCodeSchema.safeParse(request.params.arguments);
+    if (!parsed.success) {
+        return {
+            content: [{
+                type: "text",
+                text: JSON.stringify({
+                    status: "error",
+                    message: "Invalid input: " + parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "),
+                    suggestions: [],
+                    instruction: "Fix the input parameters and try again."
+                }, null, 2)
+            }]
+        };
+    }
 
-    return {
-        content: [{ type: "text", text: reportText }]
-    };
+    const { language, code, projectPath } = parsed.data;
+    const safeProjectPath = sanitizeProjectPath(projectPath);
+
+    try {
+        const reportText = await manager.verify(language, code, safeProjectPath);
+        return {
+            content: [{ type: "text", text: reportText }]
+        };
+    } catch (err) {
+        if (err instanceof SecurityError) {
+            return {
+                content: [{
+                    type: "text",
+                    text: JSON.stringify({
+                        status: "error",
+                        message: err.message,
+                        suggestions: [],
+                        instruction: "The request was blocked by security policy."
+                    }, null, 2)
+                }]
+            };
+        }
+        return {
+            content: [{
+                type: "text",
+                text: JSON.stringify({
+                    status: "error",
+                    message: "An unexpected error occurred during verification.",
+                    suggestions: [],
+                    instruction: "Try again or report the issue."
+                }, null, 2)
+            }]
+        };
+    }
 });
 
-// Run server
 async function run() {
     const transport = new StdioServerTransport();
     await server.connect(transport);

@@ -1,8 +1,9 @@
 import { Analyzer } from "../core/Analyzer.js";
-import { exec } from "child_process";
+import { spawn } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
 import { fileURLToPath } from "url";
+import { validatePath, validateFileSize, SecurityError } from "../core/Security.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,22 +15,72 @@ export class PHPAnalyzer implements Analyzer {
 
     async verify(code: string, projectPath?: string): Promise<string> {
         const workingDir = projectPath && fs.existsSync(projectPath) ? projectPath : process.cwd();
+
+        try {
+            validatePath(workingDir, workingDir);
+        } catch (err) {
+            if (err instanceof SecurityError) {
+                return JSON.stringify({
+                    status: "error",
+                    message: err.message,
+                    suggestions: [],
+                    instruction: "Ensure the project path is valid and within the allowed root."
+                }, null, 2);
+            }
+            throw err;
+        }
         
         return new Promise((resolve) => {
             const bridgeScript = path.join(__dirname, "..", "bridge", "php_verifier.php");
+
+            try {
+                validatePath(bridgeScript, workingDir);
+            } catch {
+                // Bridge script is relative to the installed package, not the project root — skip path check for it
+            }
             
-            // Write code to a temp file safely rather than passing as a huge CLI arg
             const tempFile = path.join(workingDir, "oracolo_temp_php_analysis.php");
             fs.writeFileSync(tempFile, code);
 
-            const command = `php "${bridgeScript}" --file="${tempFile}" --cwd="${workingDir}"`;
-            
-            exec(command, { cwd: workingDir }, (error, stdout, stderr) => {
+            try {
+                validatePath(tempFile, workingDir);
+                validateFileSize(tempFile);
+            } catch (err) {
+                if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+                if (err instanceof SecurityError) {
+                    resolve(JSON.stringify({
+                        status: "error",
+                        message: err.message,
+                        suggestions: [],
+                        instruction: "Ensure the code and file paths comply with security policies."
+                    }, null, 2));
+                    return;
+                }
+                throw err;
+            }
+
+            const child = spawn("php", [bridgeScript, "--file", tempFile, "--cwd", workingDir], {
+                cwd: workingDir,
+                stdio: ["pipe", "pipe", "pipe"],
+            });
+
+            let stdout = "";
+            let stderr = "";
+
+            child.stdout.on("data", (data: Buffer) => {
+                stdout += data.toString();
+            });
+
+            child.stderr.on("data", (data: Buffer) => {
+                stderr += data.toString();
+            });
+
+            child.on("close", (code) => {
                 if (fs.existsSync(tempFile)) {
                     fs.unlinkSync(tempFile);
                 }
 
-                if (error && error.message.includes("'php' non riconosciuto") || (error && error.code === 127) || (!stdout && stderr.includes("php"))) {
+                if ((code !== 0 && stderr.includes("php")) || (!stdout && stderr.includes("php"))) {
                     resolve(JSON.stringify({
                         status: "error",
                         message: "Oracolo could not find the 'php' executable. Is PHP installed and in your PATH?",
@@ -50,10 +101,9 @@ export class PHPAnalyzer implements Analyzer {
                 }
 
                 try {
-                    // Try parsing to ensure it's valid JSON from the bridge
                     JSON.parse(stdout);
                     resolve(stdout);
-                } catch (e) {
+                } catch {
                     resolve(JSON.stringify({
                         status: "error",
                         message: "Invalid PHP bridge output JSON.",
@@ -61,6 +111,16 @@ export class PHPAnalyzer implements Analyzer {
                         instruction: "Check Oracolo bridge stdout."
                     }, null, 2));
                 }
+            });
+
+            child.on("error", (err) => {
+                if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+                resolve(JSON.stringify({
+                    status: "error",
+                    message: "Oracolo could not find the 'php' executable. Is PHP installed and in your PATH?",
+                    suggestions: [],
+                    instruction: "Inform the user that the PHP environment is missing."
+                }, null, 2));
             });
         });
     }

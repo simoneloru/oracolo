@@ -3,6 +3,7 @@ import { Project, DiagnosticCategory, SyntaxKind, TypeChecker, Node } from "ts-m
 import * as path from "path";
 import * as fs from "fs";
 import levenshtein from "fast-levenshtein";
+import { validatePath, validateFileSize, SecurityError } from "../core/Security.js";
 
 export class TypeScriptAnalyzer implements Analyzer {
     
@@ -42,7 +43,52 @@ export class TypeScriptAnalyzer implements Analyzer {
     verify(code: string, projectPath?: string): string {
         const workingDir = projectPath && fs.existsSync(projectPath) ? projectPath : process.cwd();
 
+        try {
+            validatePath(workingDir, workingDir);
+        } catch (err) {
+            if (err instanceof SecurityError) {
+                return JSON.stringify({
+                    status: "error",
+                    message: err.message,
+                    suggestions: [],
+                    instruction: "Ensure the project path is valid and within the allowed root."
+                }, null, 2);
+            }
+            throw err;
+        }
+
         const tsconfigPath = path.join(workingDir, "tsconfig.json");
+
+        try {
+            validatePath(tsconfigPath, workingDir);
+        } catch (err) {
+            if (err instanceof SecurityError) {
+                return JSON.stringify({
+                    status: "error",
+                    message: err.message,
+                    suggestions: [],
+                    instruction: "Access to tsconfig.json is denied by security policy."
+                }, null, 2);
+            }
+            throw err;
+        }
+
+        if (fs.existsSync(tsconfigPath)) {
+            try {
+                validateFileSize(tsconfigPath);
+            } catch (err) {
+                if (err instanceof SecurityError) {
+                    return JSON.stringify({
+                        status: "error",
+                        message: err.message,
+                        suggestions: [],
+                        instruction: "The tsconfig.json file exceeds the maximum allowed size."
+                    }, null, 2);
+                }
+                throw err;
+            }
+        }
+
         const projectOptions: any = {
             compilerOptions: {
                 allowJs: true,
@@ -60,12 +106,27 @@ export class TypeScriptAnalyzer implements Analyzer {
         const project = new Project(projectOptions);
         const tc = project.getTypeChecker();
         const tempFilePath = path.join(workingDir, "src", "oracolo_temp_analysis_file.ts");
+
+        try {
+            validatePath(tempFilePath, workingDir);
+        } catch (err) {
+            if (err instanceof SecurityError) {
+                return JSON.stringify({
+                    status: "error",
+                    message: err.message,
+                    suggestions: [],
+                    instruction: "The temporary analysis file path violates security policy."
+                }, null, 2);
+            }
+            throw err;
+        }
+
         const sourceFile = project.createSourceFile(tempFilePath, code, { overwrite: true });
 
         const diagnostics = sourceFile.getPreEmitDiagnostics();
         const errors = diagnostics.filter(d => 
             d.getCategory() === DiagnosticCategory.Error && 
-            d.getCode() !== 6059 // Ignore "not under rootDir"
+            d.getCode() !== 6059
         );
 
         if (errors.length === 0) {

@@ -1,6 +1,6 @@
 {
   "name": "mcp-oracolo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP (Model Context Protocol) server designed to solve LLM code hallucinations by performing local static analysis.",
   "main": "dist/index.js",
   "files": [

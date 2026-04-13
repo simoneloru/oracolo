@@ -3,6 +3,9 @@ import { HtmlValidate } from "html-validate";
 import * as path from "path";
 import * as fs from "fs";
 import levenshtein from "fast-levenshtein";
+import { validatePath, validateFileSize, isBlacklisted, SecurityError, MAX_FILE_SIZE } from "../core/Security.js";
+
+const MAX_CSS_SCAN_DEPTH = 3;
 
 export class HTMLAnalyzer implements Analyzer {
     
@@ -10,34 +13,75 @@ export class HTMLAnalyzer implements Analyzer {
         return ["html"].includes(language);
     }
 
-    private getCssClassesInProject(dir: string, arrayOfClasses: string[] = []): string[] {
-        // Recursive CSS file scan. Keeping it shallow to avoid performance drops.
+    private getCssClassesInProject(dir: string, rootPath: string, arrayOfClasses: string[] = [], currentDepth: number = 0): string[] {
+        if (currentDepth > MAX_CSS_SCAN_DEPTH) return arrayOfClasses;
+
+        try {
+            validatePath(dir, rootPath);
+        } catch {
+            return arrayOfClasses;
+        }
+
         try {
             const files = fs.readdirSync(dir);
             for (const file of files) {
-                // Ignore node_modules or large dirs
                 if (file === "node_modules" || file === "dist" || file === "vendor" || file.startsWith(".")) continue;
 
                 const fullPath = path.join(dir, file);
-                if (fs.statSync(fullPath).isDirectory()) {
-                    // Limit recursion depth or just do a 2-level search if huge.
-                    this.getCssClassesInProject(fullPath, arrayOfClasses);
+
+                try {
+                    validatePath(fullPath, rootPath);
+                } catch {
+                    continue;
+                }
+
+                if (isBlacklisted(fullPath)) continue;
+
+                let stat: fs.Stats;
+                try {
+                    stat = fs.statSync(fullPath);
+                } catch {
+                    continue;
+                }
+
+                if (stat.isDirectory()) {
+                    this.getCssClassesInProject(fullPath, rootPath, arrayOfClasses, currentDepth + 1);
                 } else if (file.endsWith(".css")) {
-                    const content = fs.readFileSync(fullPath, "utf-8");
-                    // Simple Regex to capture .classname
-                    const matches = content.matchAll(/\.([a-zA-Z0-9_\-]+)\s*\{/g);
-                    for (const match of matches) {
-                        arrayOfClasses.push(match[1]);
+                    try {
+                        validateFileSize(fullPath, MAX_FILE_SIZE);
+                        const content = fs.readFileSync(fullPath, "utf-8");
+                        const matches = content.matchAll(/\.([a-zA-Z0-9_\-]+)\s*\{/g);
+                        for (const match of matches) {
+                            arrayOfClasses.push(match[1]);
+                        }
+                    } catch {
+                        continue;
                     }
                 }
             }
-        } catch(e) {}
+        } catch {
+            // Silently skip unreadable directories
+        }
 
-        return [...new Set(arrayOfClasses)]; // return unique
+        return [...new Set(arrayOfClasses)];
     }
 
     async verify(code: string, projectPath?: string): Promise<string> {
         const workingDir = projectPath && fs.existsSync(projectPath) ? projectPath : process.cwd();
+
+        try {
+            validatePath(workingDir, workingDir);
+        } catch (err) {
+            if (err instanceof SecurityError) {
+                return JSON.stringify({
+                    status: "error",
+                    message: err.message,
+                    suggestions: [],
+                    instruction: "Ensure the project path is valid and within the allowed root."
+                }, null, 2);
+            }
+            throw err;
+        }
 
         const htmlvalidate = new HtmlValidate({
             extends: ["html-validate:recommended"],
@@ -50,7 +94,6 @@ export class HTMLAnalyzer implements Analyzer {
         const report = await htmlvalidate.validateString(code);
 
         if (!report.valid) {
-            // Pick first error
             const error = report.results[0].messages[0];
             return JSON.stringify({
                 status: "error",
@@ -60,17 +103,14 @@ export class HTMLAnalyzer implements Analyzer {
             }, null, 2);
         }
 
-        // Validate CSS Classes
-        const availableClasses = this.getCssClassesInProject(workingDir);
+        const availableClasses = this.getCssClassesInProject(workingDir, workingDir);
         
-        // Find class="xyz"
         const classMatches = code.matchAll(/class=["']([^"']+)["']/g);
         for (const match of classMatches) {
             const classesUsed = match[1].split(/\s+/);
             for (const cls of classesUsed) {
                 if (cls.trim() && availableClasses.length > 0 && !availableClasses.includes(cls)) {
                     
-                    // Fuzzy suggest
                     const scored = availableClasses.map(name => ({
                         name,
                         distance: levenshtein.get(cls, name)
