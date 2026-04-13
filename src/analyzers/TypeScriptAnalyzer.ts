@@ -40,21 +40,25 @@ export class TypeScriptAnalyzer implements Analyzer {
         return scored.slice(0, 3).map(s => s.name);
     }
 
-    verify(code: string, projectPath?: string): string {
-        const workingDir = projectPath && fs.existsSync(projectPath) ? projectPath : process.cwd();
-
+    async verify(code: string, projectPath?: string): Promise<string> {
+        let workingDir: string;
         try {
-            validatePath(workingDir, workingDir);
-        } catch (err) {
-            if (err instanceof SecurityError) {
-                return JSON.stringify({
-                    status: "error",
-                    message: err.message,
-                    suggestions: [],
-                    instruction: "Ensure the project path is valid and within the allowed root."
-                }, null, 2);
+            if (projectPath) {
+                workingDir = path.resolve(process.cwd(), projectPath);
+                validatePath(workingDir, process.cwd());
+                if (!fs.existsSync(workingDir)) {
+                    throw new Error(`Project path does not exist: ${projectPath}`);
+                }
+            } else {
+                workingDir = process.cwd();
             }
-            throw err;
+        } catch (err: any) {
+            return JSON.stringify({
+                status: "error",
+                message: err instanceof SecurityError ? err.message : err.message,
+                suggestions: [],
+                instruction: "Ensure the project path is valid, exists, and is within the allowed root."
+            }, null, 2);
         }
 
         const tsconfigPath = path.join(workingDir, "tsconfig.json");

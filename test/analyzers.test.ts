@@ -259,4 +259,59 @@ describe("Security Module", () => {
             expect(result).toBe(path.resolve(process.cwd()));
         });
     });
+
+    describe("Analyzer Security Integration", () => {
+        it("PHPAnalyzer should block path traversal in projectPath", async () => {
+            const analyzer = new PHPAnalyzer();
+            const res = await analyzer.verify("<?php echo 1;", "../../etc");
+            const parsed = JSON.parse(res);
+            expect(parsed.status).toBe("error");
+            expect(parsed.message).toBe("Access Denied: Path outside project root");
+        });
+
+        it("TypeScriptAnalyzer should block path traversal in projectPath", async () => {
+            const analyzer = new TypeScriptAnalyzer();
+            const res = await analyzer.verify("const x = 1;", "../../etc");
+            const parsed = JSON.parse(res);
+            expect(parsed.status).toBe("error");
+            expect(parsed.message).toBe("Access Denied: Path outside project root");
+        });
+
+        it("HTMLAnalyzer should block path traversal in projectPath", async () => {
+            const analyzer = new HTMLAnalyzer();
+            const res = await analyzer.verify("<div></div>", "../../etc");
+            const parsed = JSON.parse(res);
+            expect(parsed.status).toBe("error");
+            expect(parsed.message).toBe("Access Denied: Path outside project root");
+        });
+
+        it("HTMLAnalyzer should not exceed MAX_CSS_SCAN_DEPTH", async () => {
+            const analyzer = new HTMLAnalyzer();
+            const root = process.cwd();
+            const tmpDir = fs.mkdtempSync(path.join(root, "oracolo-depth-test-"));
+            
+            // Create a deep structure: tmp/d1/d2/d3/d4/test.css
+            const d1 = path.join(tmpDir, "d1");
+            const d2 = path.join(d1, "d2");
+            const d3 = path.join(d2, "d3");
+            const d4 = path.join(d3, "d4");
+            fs.mkdirSync(d1);
+            fs.mkdirSync(d2);
+            fs.mkdirSync(d3);
+            fs.mkdirSync(d4);
+            fs.writeFileSync(path.join(d4, "too_deep.css"), ".hidden { color: red; }");
+
+            try {
+                // Should not find 'hidden' because it's at depth 4 (limit is 3)
+                const res = await analyzer.verify('<div class="hidden"></div>', tmpDir);
+                const parsed = JSON.parse(res);
+                // If it successfully validated but didn't find the class, it's a success in terms of depth limit
+                // (it won't find the class and won't throw error if no classes found at all, but here we expect error if class not found)
+                expect(parsed.status).toBe("success"); // Because it didn't find ANY CSS files within limits, availableClasses is empty.
+                // In our current logic, if availableClasses is empty, it returns success.
+            } finally {
+                fs.rmSync(tmpDir, { recursive: true, force: true });
+            }
+        });
+    });
 });

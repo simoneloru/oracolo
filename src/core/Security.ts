@@ -76,7 +76,7 @@ export function isBlacklisted(filePath: string): boolean {
     return false;
 }
 
-export function validatePath(targetPath: string, rootPath: string): void {
+export function validatePath(targetPath: string, rootPath: string = process.cwd()): void {
     if (!isPathWithinRoot(targetPath, rootPath)) {
         throw new SecurityError("Access Denied: Path outside project root");
     }
@@ -87,6 +87,7 @@ export function validatePath(targetPath: string, rootPath: string): void {
 
 export function validateFileSize(filePath: string, maxSize: number = MAX_FILE_SIZE): void {
     try {
+        if (!fs.existsSync(filePath)) return;
         const stats = fs.statSync(filePath);
         if (stats.size > maxSize) {
             throw new SecurityError(`Access Denied: File exceeds maximum allowed size (${maxSize} bytes)`);
@@ -96,22 +97,26 @@ export function validateFileSize(filePath: string, maxSize: number = MAX_FILE_SI
     }
 }
 
-export function validateAndResolvePath(targetPath: string, rootPath: string): string {
+export function validateAndResolvePath(targetPath: string, rootPath: string = process.cwd()): string {
     const resolved = path.resolve(rootPath, targetPath);
     validatePath(resolved, rootPath);
     return resolved;
 }
 
 export function sanitizeProjectPath(projectPath: string | undefined | null): string {
-    if (!projectPath || typeof projectPath !== "string") return process.cwd();
+    const root = process.cwd();
+    if (!projectPath || typeof projectPath !== "string") return root;
     const trimmed = projectPath.trim();
-    if (trimmed.length === 0) return process.cwd();
-    const resolved = path.resolve(trimmed);
-    try {
-        validatePath(resolved, resolved);
-    } catch {
-        return process.cwd();
+    if (trimmed.length === 0) return root;
+    
+    // Resolve relative to CWD
+    const resolved = path.resolve(root, trimmed);
+    
+    // Safety check: Don't allow climbing up from the starting directory
+    if (!isPathWithinRoot(resolved, root)) {
+        throw new SecurityError("Access Denied: Path outside project root");
     }
+
     return resolved;
 }
 

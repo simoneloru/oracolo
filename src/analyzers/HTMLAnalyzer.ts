@@ -67,20 +67,24 @@ export class HTMLAnalyzer implements Analyzer {
     }
 
     async verify(code: string, projectPath?: string): Promise<string> {
-        const workingDir = projectPath && fs.existsSync(projectPath) ? projectPath : process.cwd();
-
+        let workingDir: string;
         try {
-            validatePath(workingDir, workingDir);
-        } catch (err) {
-            if (err instanceof SecurityError) {
-                return JSON.stringify({
-                    status: "error",
-                    message: err.message,
-                    suggestions: [],
-                    instruction: "Ensure the project path is valid and within the allowed root."
-                }, null, 2);
+            if (projectPath) {
+                workingDir = path.resolve(process.cwd(), projectPath);
+                validatePath(workingDir, process.cwd());
+                if (!fs.existsSync(workingDir)) {
+                    throw new Error(`Project path does not exist: ${projectPath}`);
+                }
+            } else {
+                workingDir = process.cwd();
             }
-            throw err;
+        } catch (err: any) {
+            return JSON.stringify({
+                status: "error",
+                message: err instanceof SecurityError ? err.message : err.message,
+                suggestions: [],
+                instruction: "Ensure the project path is valid, exists, and is within the allowed root."
+            }, null, 2);
         }
 
         const htmlvalidate = new HtmlValidate({

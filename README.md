@@ -20,9 +20,19 @@ If it finds a mismatch, it tells the LLM to correct itself. No stack traces to p
 npm install -g mcp-oracolo
 ```
 
+Or use directly with npx (no installation required):
+
+```bash
+npx -y mcp-oracolo --languages=typescript,php,html
+```
+
 ## Configuration
 
-Add to your MCP client config (example for Claude Desktop):
+Add to your MCP client configuration file:
+
+### Roo Code
+
+Create `.roo/mcp.json` in your project root:
 
 ```json
 {
@@ -30,6 +40,52 @@ Add to your MCP client config (example for Claude Desktop):
     "oracolo": {
       "command": "npx",
       "args": ["-y", "mcp-oracolo", "--languages=typescript,php,html"]
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "oracolo": {
+      "command": "npx",
+      "args": ["-y", "mcp-oracolo", "--languages=typescript,php,html"]
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to your Cursor MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "oracolo": {
+      "command": "npx",
+      "args": ["-y", "mcp-oracolo", "--languages=typescript,php,html"]
+    }
+  }
+}
+```
+
+### Windows
+
+On Windows, wrap `npx` in `cmd`:
+
+```json
+{
+  "mcpServers": {
+    "oracolo": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "mcp-oracolo", "--languages=typescript,php,html"]
     }
   }
 }
